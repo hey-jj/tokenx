@@ -64,16 +64,6 @@ pub fn punctuation() -> &'static Regex {
     RE.get_or_init(|| Regex::new(PUNCTUATION_CLASS).unwrap())
 }
 
-/// Alphanumeric test. Anchored. ASCII letters and digits plus Latin-1 accented
-/// letters. The class skips U+00D7 and U+00F7 (the multiplication and division
-/// signs) so two gaps appear in the accented ranges.
-pub fn alphanumeric() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new("^[a-zA-Z0-9\u{00C0}-\u{00D6}\u{00D8}-\u{00F6}\u{00F8}-\u{00FF}]+$").unwrap()
-    })
-}
-
 /// The punctuation character class as a regex fragment.
 ///
 /// Each entry is a literal. The trailing `-` is a literal hyphen. The `\]` is a

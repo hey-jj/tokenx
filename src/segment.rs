@@ -102,8 +102,8 @@ pub fn char_count(s: &str) -> usize {
 /// 3. whole-segment numeric -> 1
 /// 4. UTF-16 length <= 3 -> 1
 /// 5. contains punctuation -> ceil(len / 2) when len > 1, else 1
-/// 6. whole-segment alphanumeric -> ceil(len / chars_per_token)
-/// 7. fallback (mixed content) -> ceil(len / chars_per_token)
+/// 6. whole-segment alphanumeric -> `ceil(len / chars_per_token)`
+/// 7. fallback (mixed content) -> `ceil(len / chars_per_token)`
 pub fn estimate_segment_tokens(
     segment: &str,
     language_configs: &[LanguageConfig],
@@ -134,10 +134,9 @@ pub fn estimate_segment_tokens(
         };
     }
 
-    // Alphanumeric segments and the mixed-content fallback use the same formula.
-    // The alphanumeric test is kept to mirror the rule order, though both
-    // branches compute the same value.
-    let _ = patterns::alphanumeric().is_match(segment);
+    // Rules 6 and 7 (whole-segment alphanumeric, mixed-content fallback) compute
+    // the same value, so the alphanumeric test does not change the result and is
+    // not run.
     let chars_per_token = language_specific_chars_per_token(segment, language_configs)
         .unwrap_or(default_chars_per_token);
     (len as f64 / chars_per_token).ceil() as i64

@@ -69,6 +69,36 @@ fn mixed_content_not_one_to_one() {
 }
 
 #[test]
+fn ecmascript_whitespace_set() {
+    // The whitespace class is the ECMAScript `\s` set, not Unicode White_Space.
+    // The two disagree on U+FEFF and U+0085, in opposite directions.
+
+    // U+FEFF (BOM) is ECMAScript whitespace, so it counts 0.
+    assert_eq!(estimate_token_count("\u{FEFF}"), 0);
+    assert_eq!(estimate_token_count("\u{FEFF}\u{FEFF}"), 0);
+    // A BOM between words is a delimiter. "ab" and "cd" each count 1.
+    assert_eq!(estimate_token_count("ab\u{FEFF}cd"), 2);
+
+    // U+0085 (NEL) is not ECMAScript whitespace, so it does not split or zero out.
+    // "\u{0085}" alone is one short non-whitespace segment.
+    assert_eq!(estimate_token_count("\u{0085}"), 1);
+    // "ab\u{0085}cd" stays one 5-unit segment, fallback ceil(5 / 6) = 1.
+    assert_eq!(estimate_token_count("ab\u{0085}cd"), 1);
+}
+
+#[test]
+fn mid_text_bom_splits_like_javascript() {
+    // A BOM glued to a leading word rides along and the count is unaffected, the
+    // case the fixtures hit. A BOM in the middle of text must act as a delimiter.
+    // "word\u{FEFF}word" -> ["word", "word"], each ceil(4 / 6) = 1, total 2.
+    assert_eq!(estimate_token_count("word\u{FEFF}word"), 2);
+    // Without the fix this stays one 9-unit segment and counts ceil(9 / 6) = 2 by
+    // coincidence, so use an input where the totals differ. "longword\u{FEFF}x":
+    // split -> ceil(8 / 6) + 1 = 2 + 1 = 3, glued -> ceil(10 / 6) = 2.
+    assert_eq!(estimate_token_count("longword\u{FEFF}x"), 3);
+}
+
+#[test]
 fn custom_chars_per_token_increases_count() {
     let default_count = estimate_token_count("Hello world");
     let opts = TokenEstimationOptions {

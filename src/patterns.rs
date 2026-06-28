@@ -14,10 +14,22 @@ pub const DEFAULT_CHARS_PER_TOKEN: f64 = 6.0;
 /// Segments at or below this UTF-16 length count as one token.
 pub const SHORT_TOKEN_THRESHOLD: usize = 3;
 
+/// The whitespace character class.
+///
+/// This is the ECMAScript `\s` set, not the Unicode `White_Space` property.
+/// The `regex` crate `\s` follows `White_Space`, which drops U+FEFF and adds
+/// U+0085. Both shifts change token counts. The class below lists the exact
+/// code points ECMAScript `\s` matches so the splitter and the whitespace test
+/// agree with the source semantics.
+///
+/// Members: U+0009, U+000A, U+000B, U+000C, U+000D, U+0020, U+00A0, U+1680,
+/// U+2000 through U+200A, U+2028, U+2029, U+202F, U+205F, U+3000, U+FEFF.
+const WHITESPACE_CLASS: &str = "[\u{0009}\u{000A}\u{000B}\u{000C}\u{000D}\u{0020}\u{00A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}]";
+
 /// Whitespace test. Anchored: the whole segment must be whitespace.
 pub fn whitespace() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^\s+$").unwrap())
+    RE.get_or_init(|| Regex::new(&format!("^{WHITESPACE_CLASS}+$")).unwrap())
 }
 
 /// CJK test. Unanchored: fires if the segment contains one CJK character.
@@ -72,7 +84,9 @@ const PUNCTUATION_CLASS: &str = r"[.,!?;(){}\[\]<>:/\\|@#$%^&*+=`~_-]";
 ///
 /// Matches a run of whitespace or a run of punctuation. The caller emits the
 /// text between matches and the matched runs in order, then drops empty pieces.
+/// Whitespace uses [`WHITESPACE_CLASS`], the ECMAScript `\s` set, so the split
+/// boundaries match the source.
 pub fn split_pattern() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(&format!(r"(\s+|{PUNCTUATION_CLASS}+)")).unwrap())
+    RE.get_or_init(|| Regex::new(&format!(r"({WHITESPACE_CLASS}+|{PUNCTUATION_CLASS}+)")).unwrap())
 }

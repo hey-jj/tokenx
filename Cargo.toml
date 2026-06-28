@@ -6,6 +6,8 @@ description = "vocab-free heuristic LLM token-count estimation"
 license = "MIT"
 repository = "https://github.com/hey-jj/tokenx"
 readme = "README.md"
+keywords = ["tokenizer", "tokens", "llm", "gpt", "estimate"]
+categories = ["text-processing", "parsing"]
 
 [dependencies]
 regex = "1.12.4"

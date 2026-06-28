@@ -43,6 +43,22 @@ fn case_insensitive_config_matches_uppercase() {
 }
 
 #[test]
+fn zero_chars_per_token_saturates_without_panic() {
+    // Some(0.0) is honored, not replaced by the default. A zero rate makes the
+    // per-segment division infinite. The count must stay finite and not panic.
+    // Each non-trivial segment saturates to u64::MAX, and the saturating sum
+    // holds at u64::MAX over multiple segments.
+    let opts = TokenEstimationOptions {
+        default_chars_per_token: Some(0.0),
+        ..Default::default()
+    };
+    assert_eq!(
+        estimate_token_count_with("hello world this is text", &opts),
+        u64::MAX
+    );
+}
+
+#[test]
 #[allow(deprecated)]
 fn deprecated_alias_matches_estimate() {
     for input in ["", "Hello, world!", "wonderful", "道德經"] {

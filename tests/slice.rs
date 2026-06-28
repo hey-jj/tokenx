@@ -48,7 +48,9 @@ fn german_negative_indices() {
 
 #[test]
 fn edge_cases() {
-    let total = estimate_token_count(GERMAN_TEXT);
+    // Slice indices are signed, so cast the unsigned count to combine it with
+    // offsets.
+    let total = estimate_token_count(GERMAN_TEXT) as i64;
 
     // start at or past end returns empty.
     assert_eq!(slice_by_tokens(GERMAN_TEXT, 10, Some(5)), "");
@@ -63,6 +65,22 @@ fn edge_cases() {
     );
     // a large negative start clamps to zero.
     assert_eq!(slice_by_tokens(GERMAN_TEXT, -1000, None), GERMAN_TEXT);
+}
+
+#[test]
+fn astral_split_emits_replacement_char() {
+    // Five U+1F600 emoji, UTF-16 length 10, one word segment, fallback
+    // ceil(10 / 6) = 2 tokens. slice_by_tokens(text, 0, Some(1)) cuts at UTF-16
+    // unit 5, inside the third surrogate pair. JavaScript keeps a lone high
+    // surrogate there. A Rust String cannot, so the lone surrogate becomes
+    // U+FFFD. This pins the documented limitation.
+    let text = "\u{1F600}\u{1F600}\u{1F600}\u{1F600}\u{1F600}";
+    let out = slice_by_tokens(text, 0, Some(1));
+    let units: Vec<u16> = out.encode_utf16().collect();
+    assert_eq!(units, vec![0xd83d, 0xde00, 0xd83d, 0xde00, 0xfffd]);
+    assert!(out.ends_with('\u{FFFD}'));
+    // Two whole emoji decode cleanly, the third is the replacement char.
+    assert_eq!(out.chars().count(), 3);
 }
 
 #[test]

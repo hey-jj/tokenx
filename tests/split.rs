@@ -43,10 +43,40 @@ fn overlap_grows_chunk_count_and_chars() {
 }
 
 #[test]
-fn empty_or_nonpositive_chunk_returns_empty() {
+fn empty_or_zero_chunk_returns_empty() {
+    // tokens_per_chunk is unsigned, so 0 is the only non-producing budget. A
+    // negative budget cannot be expressed.
     assert!(split_by_tokens("", 5).is_empty());
     assert!(split_by_tokens("text", 0).is_empty());
-    assert!(split_by_tokens("text", -5).is_empty());
+}
+
+#[test]
+fn overlap_at_or_above_chunk_size_carries_whole_chunk() {
+    // overlap >= tokens_per_chunk carries the whole chunk into the next
+    // iteration, so progress comes only from new segments. There is no guard
+    // against this, by design. On short text the loop still terminates. This
+    // pins the exact output so a future guard cannot change it silently.
+    let opts = SplitByTokensOptions {
+        overlap: Some(5),
+        ..Default::default()
+    };
+    let chunks = split_by_tokens_with("Hello, world! This is a short sentence.", 5, &opts);
+    assert_eq!(
+        chunks,
+        vec![
+            "Hello, world! This",
+            "Hello, world! This ",
+            "Hello, world! This is",
+            ", world! This is ",
+            ", world! This is a",
+            "world! This is a ",
+            "world! This is a short",
+            "! This is a short ",
+            "! This is a short sentence",
+            "is a short sentence.",
+            "a short sentence."
+        ]
+    );
 }
 
 #[test]

@@ -8,3 +8,4 @@ repository = "https://github.com/hey-jj/tokenx"
 readme = "README.md"
 
 [dependencies]
+regex = "1.12.4"

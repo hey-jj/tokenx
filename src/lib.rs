@@ -52,7 +52,7 @@ fn resolve(
 
 /// Estimates the number of tokens in `text`.
 ///
-/// Returns 0 for the empty string. The estimate is a non-negative integer.
+/// Returns 0 for the empty string. The count is unsigned and never negative.
 ///
 /// # Examples
 ///
@@ -62,7 +62,8 @@ fn resolve(
 /// assert_eq!(estimate_token_count(""), 0);
 /// assert_eq!(estimate_token_count("Hello, world! This is a short sentence."), 11);
 /// ```
-pub fn estimate_token_count(text: &str) -> i64 {
+#[must_use]
+pub fn estimate_token_count(text: &str) -> u64 {
     estimate_token_count_with(text, &TokenEstimationOptions::default())
 }
 
@@ -76,7 +77,8 @@ pub fn estimate_token_count(text: &str) -> i64 {
 /// let opts = TokenEstimationOptions { default_chars_per_token: Some(4.0), ..Default::default() };
 /// assert!(estimate_token_count_with("Hello world", &opts) > estimate_token_count("Hello world"));
 /// ```
-pub fn estimate_token_count_with(text: &str, options: &TokenEstimationOptions) -> i64 {
+#[must_use]
+pub fn estimate_token_count_with(text: &str, options: &TokenEstimationOptions) -> u64 {
     if text.is_empty() {
         return 0;
     }
@@ -84,16 +86,20 @@ pub fn estimate_token_count_with(text: &str, options: &TokenEstimationOptions) -
         options.default_chars_per_token,
         options.language_configs.as_ref(),
     );
+    // Saturating addition keeps the total finite. A zero chars-per-token makes a
+    // segment saturate to u64::MAX, and the running sum then stays at u64::MAX
+    // instead of overflowing.
     split_segments(text)
         .iter()
         .map(|s| estimate_segment_tokens(s, &configs, cpt))
-        .sum()
+        .fold(0u64, u64::saturating_add)
 }
 
 /// Returns the token estimate for `text`. Deprecated alias of
 /// [`estimate_token_count`].
+#[must_use]
 #[deprecated(note = "use `estimate_token_count`")]
-pub fn approximate_token_size(text: &str) -> i64 {
+pub fn approximate_token_size(text: &str) -> u64 {
     estimate_token_count(text)
 }
 
@@ -108,15 +114,17 @@ pub fn approximate_token_size(text: &str) -> i64 {
 ///
 /// assert!(is_within_token_limit("Short input.", 10));
 /// ```
-pub fn is_within_token_limit(text: &str, token_limit: i64) -> bool {
+#[must_use]
+pub fn is_within_token_limit(text: &str, token_limit: u64) -> bool {
     is_within_token_limit_with(text, token_limit, &TokenEstimationOptions::default())
 }
 
 /// Reports whether the estimate for `text` is at or below `token_limit`, with
 /// custom options.
+#[must_use]
 pub fn is_within_token_limit_with(
     text: &str,
-    token_limit: i64,
+    token_limit: u64,
     options: &TokenEstimationOptions,
 ) -> bool {
     estimate_token_count_with(text, options) <= token_limit
@@ -127,6 +135,11 @@ pub fn is_within_token_limit_with(
 /// Negative `start` or `end` count from the end. `end` of `None` slices to the
 /// end of the text. A `start` at or past `end` returns the empty string.
 ///
+/// A multi-token segment is cut by proportion of its UTF-16 length. If a cut
+/// lands inside a surrogate pair, the lone surrogate becomes U+FFFD, since a
+/// `String` cannot hold one. This affects only astral characters and never
+/// Basic Multilingual Plane text.
+///
 /// # Examples
 ///
 /// ```
@@ -136,11 +149,13 @@ pub fn is_within_token_limit_with(
 /// assert_eq!(slice_by_tokens(text, 0, Some(2)), "Hello,");
 /// assert_eq!(slice_by_tokens(text, 2, None), " world! This is a short sentence.");
 /// ```
+#[must_use]
 pub fn slice_by_tokens(text: &str, start: i64, end: Option<i64>) -> String {
     slice_by_tokens_with(text, start, end, &TokenEstimationOptions::default())
 }
 
 /// Extracts a token range with custom options. See [`slice_by_tokens`].
+#[must_use]
 pub fn slice_by_tokens_with(
     text: &str,
     start: i64,
@@ -156,19 +171,19 @@ pub fn slice_by_tokens_with(
     );
 
     // Total tokens are needed only to resolve negative indices.
-    let mut total_tokens = 0i64;
+    let mut total_tokens = 0f64;
     if start < 0 || end.is_some_and(|e| e < 0) {
-        total_tokens = estimate_token_count_with(text, options);
+        total_tokens = estimate_token_count_with(text, options) as f64;
     }
 
     let normalized_start: f64 = if start < 0 {
-        (total_tokens + start).max(0) as f64
+        (total_tokens + start as f64).max(0.0)
     } else {
         start.max(0) as f64
     };
     let normalized_end: f64 = match end {
         None => f64::INFINITY,
-        Some(e) if e < 0 => (total_tokens + e).max(0) as f64,
+        Some(e) if e < 0 => (total_tokens + e as f64).max(0.0),
         Some(e) => e as f64,
     };
 
@@ -236,10 +251,17 @@ fn extract_segment_part(
     utf16_slice(segment, char_start, char_end)
 }
 
-/// Slices `s` on UTF-16 code-unit indices, matching `String.prototype.slice`.
+/// Slices `s` on UTF-16 code-unit indices, like `String.prototype.slice`.
 ///
 /// Indices are clamped to the string length. A start at or past the end yields
 /// the empty string.
+///
+/// One difference from JavaScript: when an index lands inside a surrogate pair,
+/// `String.prototype.slice` keeps a lone surrogate. A Rust `String` is UTF-8 and
+/// cannot hold one, so the lone surrogate becomes U+FFFD here. This only affects
+/// astral characters (code points above U+FFFF) cut at a proportional boundary.
+/// Text in the Basic Multilingual Plane, which covers every language range and
+/// every fixture, is never split mid-pair and matches JavaScript exactly.
 fn utf16_slice(s: &str, start: usize, end: usize) -> String {
     let units: Vec<u16> = s.encode_utf16().collect();
     let start = start.min(units.len());
@@ -253,8 +275,8 @@ fn utf16_slice(s: &str, start: usize, end: usize) -> String {
 /// Splits `text` into chunks, each holding up to `tokens_per_chunk` tokens.
 ///
 /// A chunk can exceed the budget by the last segment added, because a segment is
-/// counted after it is placed. `tokens_per_chunk` at or below zero returns an
-/// empty vector. With no overlap, joining the chunks reproduces `text`.
+/// counted after it is placed. A `tokens_per_chunk` of 0 returns an empty
+/// vector. With no overlap, joining the chunks reproduces `text`.
 ///
 /// # Examples
 ///
@@ -265,18 +287,20 @@ fn utf16_slice(s: &str, start: usize, end: usize) -> String {
 /// let chunks = split_by_tokens(text, 5);
 /// assert_eq!(chunks.concat(), text);
 /// ```
-pub fn split_by_tokens(text: &str, tokens_per_chunk: i64) -> Vec<String> {
+#[must_use]
+pub fn split_by_tokens(text: &str, tokens_per_chunk: u64) -> Vec<String> {
     split_by_tokens_with(text, tokens_per_chunk, &SplitByTokensOptions::default())
 }
 
 /// Splits `text` into chunks with custom options, including overlap. See
 /// [`split_by_tokens`].
+#[must_use]
 pub fn split_by_tokens_with(
     text: &str,
-    tokens_per_chunk: i64,
+    tokens_per_chunk: u64,
     options: &SplitByTokensOptions,
 ) -> Vec<String> {
-    if text.is_empty() || tokens_per_chunk <= 0 {
+    if text.is_empty() || tokens_per_chunk == 0 {
         return Vec::new();
     }
     let (cpt, configs) = resolve(
@@ -287,24 +311,25 @@ pub fn split_by_tokens_with(
 
     let mut chunks: Vec<String> = Vec::new();
     let mut current_chunk: Vec<&str> = Vec::new();
-    let mut current_token_count = 0i64;
+    let mut current_token_count = 0u64;
 
     for seg in split_segments(text) {
         let token_count = estimate_segment_tokens(seg, &configs, cpt);
         current_chunk.push(seg);
-        current_token_count += token_count;
+        current_token_count = current_token_count.saturating_add(token_count);
 
         if current_token_count >= tokens_per_chunk {
             chunks.push(current_chunk.concat());
 
             if overlap > 0 {
                 let mut overlap_segments: Vec<&str> = Vec::new();
-                let mut overlap_token_count = 0i64;
+                let mut overlap_token_count = 0u64;
                 let mut i = current_chunk.len();
                 while i > 0 && overlap_token_count < overlap {
                     i -= 1;
                     let sv = current_chunk[i];
-                    overlap_token_count += estimate_segment_tokens(sv, &configs, cpt);
+                    overlap_token_count = overlap_token_count
+                        .saturating_add(estimate_segment_tokens(sv, &configs, cpt));
                     overlap_segments.insert(0, sv);
                 }
                 current_chunk = overlap_segments;

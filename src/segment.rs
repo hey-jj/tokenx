@@ -69,7 +69,7 @@ pub struct SplitByTokensOptions {
     /// Language rules. `None` uses the built-in set of three.
     pub language_configs: Option<Vec<LanguageConfig>>,
     /// Tokens to repeat between consecutive chunks. `None` means zero.
-    pub overlap: Option<i64>,
+    pub overlap: Option<u64>,
 }
 
 /// The three built-in language rules.
@@ -108,13 +108,13 @@ pub fn estimate_segment_tokens(
     segment: &str,
     language_configs: &[LanguageConfig],
     default_chars_per_token: f64,
-) -> i64 {
+) -> u64 {
     if patterns::whitespace().is_match(segment) {
         return 0;
     }
 
     if patterns::cjk().is_match(segment) {
-        return char_count(segment) as i64;
+        return char_count(segment) as u64;
     }
 
     if patterns::numeric().is_match(segment) {
@@ -128,7 +128,7 @@ pub fn estimate_segment_tokens(
 
     if patterns::punctuation().is_match(segment) {
         return if len > 1 {
-            (len as f64 / 2.0).ceil() as i64
+            (len as f64 / 2.0).ceil() as u64
         } else {
             1
         };
@@ -139,7 +139,10 @@ pub fn estimate_segment_tokens(
     // not run.
     let chars_per_token = language_specific_chars_per_token(segment, language_configs)
         .unwrap_or(default_chars_per_token);
-    (len as f64 / chars_per_token).ceil() as i64
+    // A zero or negative chars-per-token makes the division infinite or negative.
+    // `as u64` saturates: infinity becomes u64::MAX, a negative becomes 0. The
+    // result stays finite and no arithmetic panics.
+    (len as f64 / chars_per_token).ceil() as u64
 }
 
 /// Returns the chars-per-token of the first matching language rule, or `None`.
@@ -181,7 +184,7 @@ pub fn split_segments(text: &str) -> Vec<&str> {
 mod tests {
     use super::*;
 
-    fn est(segment: &str) -> i64 {
+    fn est(segment: &str) -> u64 {
         estimate_segment_tokens(
             segment,
             &default_language_configs(),
@@ -193,24 +196,30 @@ mod tests {
     fn segment_math_table() {
         // Single-segment inputs and their direct token counts. Values match the
         // classifier rules in order.
-        let cases: &[(&str, i64)] = &[
-            ("is", 1),        // short token (UTF-16 length <= 3)
-            ("a", 1),         // short token
-            (",", 1),         // single punctuation, caught by short-token rule
-            ("!!!", 1),       // length 3, short-token rule wins before punctuation
-            ("!!!!", 2),      // length 4 punctuation, ceil(4 / 2)
-            ("::::", 2),      // length 4 punctuation, ceil(4 / 2)
-            ("12345", 1),     // numeric
-            ("3.14", 1),      // numeric with a dot
-            ("1,000.50", 1),  // numeric with separators
-            ("Hello", 1),     // alphanumeric, ceil(5 / 6)
-            ("sentence", 2),  // alphanumeric, ceil(8 / 6)
-            ("道德經", 3),    // CJK, one token per code point
-            ("pünktlich", 3), // German rule, ceil(9 / 3)
-            ("français", 3),  // Romance rule, ceil(8 / 3)
-            ("señor", 2),     // Romance rule, ceil(5 / 3)
-            ("źdźbło", 2),    // Slavic rule, ceil(6 / 3.5)
-            ("příliš", 2),    // Slavic rule, ceil(6 / 3.5)
+        let cases: &[(&str, u64)] = &[
+            ("is", 1),       // short token (UTF-16 length <= 3)
+            ("a", 1),        // short token
+            (",", 1),        // single punctuation, caught by short-token rule
+            ("!!!", 1),      // length 3, short-token rule wins before punctuation
+            ("!!!!", 2),     // length 4 punctuation, ceil(4 / 2)
+            ("::::", 2),     // length 4 punctuation, ceil(4 / 2)
+            ("12345", 1),    // numeric
+            ("3.14", 1),     // numeric with a dot
+            ("1,000.50", 1), // numeric with separators
+            ("Hello", 1),    // alphanumeric, ceil(5 / 6)
+            ("sentence", 2), // alphanumeric, ceil(8 / 6)
+            ("道德經", 3),   // CJK, one token per code point
+            // Astral characters inside a CJK segment. The CJK rule counts code
+            // points, not UTF-16 units. Both inputs are 3 code points and 4
+            // UTF-16 units, so they pin the code-point path. A switch to
+            // utf16_len would return 4 and fail here.
+            ("中😀文", 3),        // emoji between two Han characters
+            ("中\u{20000}文", 3), // astral Han (Plane 2) between two BMP Han
+            ("pünktlich", 3),     // German rule, ceil(9 / 3)
+            ("français", 3),      // Romance rule, ceil(8 / 3)
+            ("señor", 2),         // Romance rule, ceil(5 / 3)
+            ("źdźbło", 2),        // Slavic rule, ceil(6 / 3.5)
+            ("příliš", 2),        // Slavic rule, ceil(6 / 3.5)
         ];
         for (input, want) in cases {
             assert_eq!(est(input), *want, "segment {input:?}");
@@ -228,7 +237,7 @@ mod tests {
         // The default rules fold case, so uppercase accented letters match.
         // "ÄÖÜ" is length 3, so it hits the short-token rule and counts as 1.
         // A longer German word proves the rule fires.
-        assert_eq!(est("ÜBERGROSS"), (9.0_f64 / 3.0).ceil() as i64);
+        assert_eq!(est("ÜBERGROSS"), (9.0_f64 / 3.0).ceil() as u64);
     }
 
     #[test]

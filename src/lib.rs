@@ -52,14 +52,18 @@ use segment::{
 };
 
 /// Resolves the chars-per-token and language rules from options.
+///
+/// Borrows the caller's rules or the cached default set, so no-options calls
+/// neither clone nor recompile the default regexes.
 fn resolve(
     default_chars_per_token: Option<f64>,
     language_configs: Option<&Vec<Lc>>,
-) -> (f64, Vec<Lc>) {
+) -> (f64, &[Lc]) {
     let cpt = default_chars_per_token.unwrap_or(DEFAULT_CHARS_PER_TOKEN);
-    let configs = language_configs
-        .cloned()
-        .unwrap_or_else(default_language_configs);
+    let configs = match language_configs {
+        Some(c) => c.as_slice(),
+        None => default_language_configs(),
+    };
     (cpt, configs)
 }
 
@@ -104,7 +108,7 @@ pub fn estimate_token_count_with(text: &str, options: &TokenEstimationOptions) -
     // instead of overflowing.
     split_segments(text)
         .iter()
-        .map(|s| estimate_segment_tokens(s, &configs, cpt))
+        .map(|s| estimate_segment_tokens(s, configs, cpt))
         .fold(0u64, u64::saturating_add)
 }
 
@@ -210,7 +214,7 @@ pub fn slice_by_tokens_with(
         if current_token_pos >= normalized_end {
             break;
         }
-        let token_count = estimate_segment_tokens(seg, &configs, cpt);
+        let token_count = estimate_segment_tokens(seg, configs, cpt);
         let extracted = extract_segment_part(
             seg,
             current_token_pos,
@@ -327,7 +331,7 @@ pub fn split_by_tokens_with(
     let mut current_token_count = 0u64;
 
     for seg in split_segments(text) {
-        let token_count = estimate_segment_tokens(seg, &configs, cpt);
+        let token_count = estimate_segment_tokens(seg, configs, cpt);
         current_chunk.push(seg);
         current_token_count = current_token_count.saturating_add(token_count);
 
@@ -342,7 +346,7 @@ pub fn split_by_tokens_with(
                     i -= 1;
                     let sv = current_chunk[i];
                     overlap_token_count = overlap_token_count
-                        .saturating_add(estimate_segment_tokens(sv, &configs, cpt));
+                        .saturating_add(estimate_segment_tokens(sv, configs, cpt));
                     overlap_segments.insert(0, sv);
                 }
                 current_chunk = overlap_segments;

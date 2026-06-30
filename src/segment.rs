@@ -2,6 +2,7 @@
 
 use crate::patterns;
 use regex::{Regex, RegexBuilder};
+use std::sync::OnceLock;
 
 /// A language rule. When `pattern` matches a segment, the segment uses
 /// `average_chars_per_token` instead of the default.
@@ -72,16 +73,22 @@ pub struct SplitByTokensOptions {
     pub overlap: Option<u64>,
 }
 
-/// The three built-in language rules.
+/// The three built-in language rules, compiled once and shared.
 ///
 /// Order matters. The first rule whose pattern matches wins. German and the
-/// Romance set use 3 chars per token. The Slavic set uses 3.5.
-pub fn default_language_configs() -> Vec<LanguageConfig> {
-    vec![
-        LanguageConfig::case_insensitive("[äöüßẞ]", 3.0).unwrap(),
-        LanguageConfig::case_insensitive("[éèêëàâîïôûùüÿçœæáíóúñ]", 3.0).unwrap(),
-        LanguageConfig::case_insensitive("[ąćęłńóśźżěščřžýůúďťň]", 3.5).unwrap(),
-    ]
+/// Romance set use 3 chars per token. The Slavic set uses 3.5. The set is
+/// cached so default-options calls do not recompile the regexes each time.
+pub fn default_language_configs() -> &'static [LanguageConfig] {
+    static CONFIGS: OnceLock<Vec<LanguageConfig>> = OnceLock::new();
+    CONFIGS
+        .get_or_init(|| {
+            vec![
+                LanguageConfig::case_insensitive("[äöüßẞ]", 3.0).unwrap(),
+                LanguageConfig::case_insensitive("[éèêëàâîïôûùüÿçœæáíóúñ]", 3.0).unwrap(),
+                LanguageConfig::case_insensitive("[ąćęłńóśźżěščřžýůúďťň]", 3.5).unwrap(),
+            ]
+        })
+        .as_slice()
 }
 
 /// UTF-16 code-unit length, the unit JavaScript `String.length` reports.
@@ -187,7 +194,7 @@ mod tests {
     fn est(segment: &str) -> u64 {
         estimate_segment_tokens(
             segment,
-            &default_language_configs(),
+            default_language_configs(),
             patterns::DEFAULT_CHARS_PER_TOKEN,
         )
     }

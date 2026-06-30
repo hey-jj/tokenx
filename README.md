@@ -5,8 +5,10 @@ Vocab-free heuristic LLM token-count estimation.
 `tokenx` estimates how many tokens a language model reads in a string. It carries
 no vocabulary or BPE table. It splits text into words, whitespace runs, and
 punctuation runs, classifies each piece, and assigns tokens with a few
-chars-per-token rules. The estimate lands within a few percent of a real GPT
-tokenizer for most text, at a fraction of the size and cost.
+chars-per-token rules. Dropping the vocabulary makes it far smaller and cheaper
+than a real tokenizer. The output is an estimate, not an exact count. It is not
+measured against any specific tokenizer and can diverge from one on some text.
+See [Limitations](#limitations).
 
 ## Installation
 
@@ -71,6 +73,18 @@ Each segment is counted by the first matching rule:
 
 Lengths use UTF-16 code units, matching JavaScript string semantics. The CJK rule
 counts Unicode code points.
+
+## Limitations
+
+The count is a heuristic with no measured error bound, so leave headroom when
+checking a hard context limit. Two biases are worth knowing:
+
+- A whole-segment number counts as 1 token whatever its length. Real tokenizers
+  split long digit runs, so numeric-heavy text such as logs, tables, and JSON
+  undercounts. A 15-digit number is 1 token here but several in a typical
+  tokenizer.
+- Japanese hiragana uses the default fallback rate while katakana and kanji count
+  one token per code point, so hiragana-heavy text undercounts.
 
 ## License
 

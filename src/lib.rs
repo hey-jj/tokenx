@@ -4,7 +4,8 @@
 //! It uses no vocabulary or BPE table. It splits text into segments (words,
 //! whitespace runs, punctuation runs), classifies each segment, and assigns a
 //! token count per segment with a small set of chars-per-token rules. The result
-//! lands within a few percent of a real GPT tokenizer for most text.
+//! is an estimate, not an exact count. It is not measured against any specific
+//! tokenizer and can diverge from one on some text. See the limitations below.
 //!
 //! Four functions make up the API:
 //! - [`estimate_token_count`] returns the token estimate for a string.
@@ -23,6 +24,18 @@
 //! Counting operates on UTF-16 code units for lengths and slicing, matching
 //! JavaScript string semantics. The CJK rule counts Unicode code points. For
 //! text in the Basic Multilingual Plane these agree.
+//!
+//! # Limitations
+//!
+//! The count is a heuristic with no measured error bound, so leave headroom when
+//! checking a hard context limit. Two biases are worth knowing:
+//!
+//! - A whole-segment number counts as 1 token whatever its length. Real
+//!   tokenizers split long digit runs, so numeric-heavy text such as logs,
+//!   tables, and JSON undercounts. A 15-digit number is 1 token here but several
+//!   in a typical tokenizer.
+//! - Japanese hiragana uses the default fallback rate while katakana and kanji
+//!   count one token per code point, so hiragana-heavy text undercounts.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

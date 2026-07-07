@@ -108,7 +108,7 @@ pub fn char_count(s: &str) -> usize {
 /// 2. contains CJK -> one token per code point
 /// 3. whole-segment numeric -> 1
 /// 4. UTF-16 length <= 3 -> 1
-/// 5. contains punctuation -> ceil(len / 2) when len > 1, else 1
+/// 5. contains punctuation -> ceil(len / 2)
 /// 6. whole-segment alphanumeric -> `ceil(len / chars_per_token)`
 /// 7. fallback (mixed content) -> `ceil(len / chars_per_token)`
 pub fn estimate_segment_tokens(
@@ -134,11 +134,7 @@ pub fn estimate_segment_tokens(
     }
 
     if patterns::punctuation().is_match(segment) {
-        return if len > 1 {
-            (len as f64 / 2.0).ceil() as u64
-        } else {
-            1
-        };
+        return (len as f64 / 2.0).ceil() as u64;
     }
 
     // Rules 6 and 7 (whole-segment alphanumeric, mixed-content fallback) compute
@@ -183,7 +179,6 @@ pub fn split_segments(text: &str) -> Vec<&str> {
     if last < text.len() {
         out.push(&text[last..]);
     }
-    out.retain(|s| !s.is_empty());
     out
 }
 

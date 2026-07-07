@@ -65,14 +65,15 @@ let count = estimate_token_count_with("Hallo Welt", &opts);
 Each segment is counted by the first matching rule:
 
 1. Whitespace counts as 0 tokens.
-2. A segment with any CJK character counts one token per code point.
+2. A segment with a Han, Katakana, Hangul, or related BMP CJK block character
+   counts one token per code point. Hiragana is excluded.
 3. A whole-segment number (`123`, `1,000.50`) counts as 1 token.
 4. A segment of 3 characters or fewer counts as 1 token.
 5. A punctuation run counts as `ceil(length / 2)` tokens.
 6. Anything else counts as `ceil(length / chars_per_token)` tokens.
 
-Lengths use UTF-16 code units, matching JavaScript string semantics. The CJK rule
-counts Unicode code points.
+Lengths use UTF-16 code units, matching JavaScript string semantics. The CJK
+rule counts Unicode code points.
 
 ## Limitations
 

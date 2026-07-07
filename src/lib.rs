@@ -339,7 +339,6 @@ pub fn split_by_tokens_with(
             chunks.push(current_chunk.concat());
 
             if overlap > 0 {
-                let mut overlap_segments: Vec<&str> = Vec::new();
                 let mut overlap_token_count = 0u64;
                 let mut i = current_chunk.len();
                 while i > 0 && overlap_token_count < overlap {
@@ -347,9 +346,8 @@ pub fn split_by_tokens_with(
                     let sv = current_chunk[i];
                     overlap_token_count = overlap_token_count
                         .saturating_add(estimate_segment_tokens(sv, configs, cpt));
-                    overlap_segments.insert(0, sv);
                 }
-                current_chunk = overlap_segments;
+                current_chunk = current_chunk[i..].to_vec();
                 current_token_count = overlap_token_count;
             } else {
                 current_chunk.clear();

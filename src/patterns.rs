@@ -69,14 +69,3 @@ pub fn punctuation() -> &'static Regex {
 /// Each entry is a literal. The trailing `-` is a literal hyphen. The `\]` is a
 /// literal `]`. The `\\` is a literal backslash.
 const PUNCTUATION_CLASS: &str = r"[.,!?;(){}\[\]<>:/\\|@#$%^&*+=`~_-]";
-
-/// Splitter that keeps delimiters as separate segments.
-///
-/// Matches a run of whitespace or a run of punctuation. The caller emits the
-/// text between matches and the matched runs in order, then drops empty pieces.
-/// Whitespace uses [`WHITESPACE_CLASS`], the ECMAScript `\s` set, so the split
-/// boundaries match the source.
-pub fn split_pattern() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(&format!(r"({WHITESPACE_CLASS}+|{PUNCTUATION_CLASS}+)")).unwrap())
-}

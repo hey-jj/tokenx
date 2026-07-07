@@ -34,29 +34,62 @@ fn fixtures_are_byte_for_byte() {
 
 #[test]
 fn english_ebook() {
-    assert_eq!(estimate_token_count(&fixture("pg5200.txt")), 32_325);
+    assert_eq!(estimate_token_count(&fixture("pg5200.txt")), 32_323);
 }
 
 #[test]
 fn german_ebook() {
-    assert_eq!(estimate_token_count(&fixture("pg22367.txt")), 33_970);
+    assert_eq!(estimate_token_count(&fixture("pg22367.txt")), 33_968);
 }
 
 #[test]
 fn chinese_ebook() {
-    assert_eq!(estimate_token_count(&fixture("pg7337.txt")), 11_427);
+    assert_eq!(estimate_token_count(&fixture("pg7337.txt")), 11_425);
 }
 
 #[test]
 fn japanese_ebook() {
     // Not in the original assertion set. Exercises the Katakana and Kanji ranges
     // and the absent Hiragana range. The value comes from the heuristic.
-    assert_eq!(estimate_token_count(&fixture("pg1982.txt")), 10_535);
+    assert_eq!(estimate_token_count(&fixture("pg1982.txt")), 10_533);
 }
 
 #[test]
 fn empty_input_is_zero() {
     assert_eq!(estimate_token_count(""), 0);
+}
+
+#[test]
+fn plain_number_stays_one_token() {
+    assert_eq!(estimate_token_count("12345"), 1);
+}
+
+#[test]
+fn decimal_number_stays_one_token() {
+    assert_eq!(estimate_token_count("3.14"), 1);
+}
+
+#[test]
+fn grouped_decimal_number_stays_one_token() {
+    assert_eq!(estimate_token_count("1,000.50"), 1);
+}
+
+#[test]
+fn embedded_numeric_separators_keep_existing_counts() {
+    assert_eq!(estimate_token_count("abc1,000def"), 3);
+    assert_eq!(estimate_token_count("abc1,000"), 3);
+    assert_eq!(estimate_token_count("1,000def"), 3);
+}
+
+#[test]
+fn failed_long_numeric_candidate_keeps_existing_count() {
+    let mut input = String::from("1");
+    for _ in 0..16_000 {
+        input.push_str(",1");
+    }
+    input.push('x');
+
+    assert_eq!(estimate_token_count(&input), 32_001);
 }
 
 #[test]

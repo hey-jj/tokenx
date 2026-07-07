@@ -160,26 +160,175 @@ fn language_specific_chars_per_token(
 }
 
 /// Splits text into segments, keeping whitespace and punctuation runs as their
-/// own segments and dropping empty pieces.
+/// own segments and dropping empty pieces. A dot or comma inside a standalone
+/// ASCII-digit number stays in that numeric segment.
 ///
-/// This reproduces JavaScript `String.split` with a single capturing group:
-/// delimiters stay in the output, and the empty strings that fall between
-/// adjacent delimiters are removed.
+/// This matches JavaScript `String.split` with a single capturing group:
+/// delimiters stay in the output, and empty strings between adjacent delimiters
+/// are removed, except for the numeric separator rule above.
 pub fn split_segments(text: &str) -> Vec<&str> {
-    let re = patterns::split_pattern();
     let mut out = Vec::new();
-    let mut last = 0;
-    for m in re.find_iter(text) {
-        if m.start() > last {
-            out.push(&text[last..m.start()]);
+    let mut start = 0;
+    let mut i = 0;
+
+    while i < text.len() {
+        if i == start
+            && text.as_bytes()[i].is_ascii_digit()
+            && scan_boundary_number(text, &mut start, &mut i, &mut out)
+        {
+            continue;
         }
-        out.push(m.as_str());
-        last = m.end();
+
+        if is_delimiter_at(text, i) {
+            if i > start {
+                out.push(&text[start..i]);
+            }
+            let delimiter_start = i;
+            let punctuation = is_punctuation(text.as_bytes()[i]);
+            i += delimiter_len_at(text, i);
+            while i < text.len()
+                && ((punctuation && is_punctuation(text.as_bytes()[i]))
+                    || (!punctuation && is_whitespace_at(text, i)))
+            {
+                i += delimiter_len_at(text, i);
+            }
+            out.push(&text[delimiter_start..i]);
+            start = i;
+        } else {
+            i += char_len_at(text, i);
+        }
     }
-    if last < text.len() {
-        out.push(&text[last..]);
+
+    if start < text.len() {
+        out.push(&text[start..]);
     }
+
     out
+}
+
+fn scan_boundary_number<'a>(
+    text: &'a str,
+    start: &mut usize,
+    i: &mut usize,
+    out: &mut Vec<&'a str>,
+) -> bool {
+    let original_start = *start;
+    let original_len = out.len();
+    let bytes = text.as_bytes();
+
+    loop {
+        let digit_start = *i;
+        consume_ascii_digits(bytes, i);
+
+        if *i < bytes.len()
+            && matches!(bytes[*i], b'.' | b',')
+            && *i + 1 < bytes.len()
+            && bytes[*i + 1].is_ascii_digit()
+        {
+            out.push(&text[digit_start..*i]);
+            out.push(&text[*i..*i + 1]);
+            *i += 1;
+            continue;
+        }
+
+        let standalone_end = *i == text.len() || is_delimiter_at(text, *i);
+        if standalone_end && patterns::numeric().is_match(&text[original_start..*i]) {
+            out.truncate(original_len);
+            out.push(&text[original_start..*i]);
+            *start = *i;
+        } else if out.len() == original_len {
+            *start = original_start;
+        } else {
+            *start = digit_start;
+        }
+
+        return true;
+    }
+}
+
+fn consume_ascii_digits(bytes: &[u8], i: &mut usize) {
+    while *i < bytes.len() && bytes[*i].is_ascii_digit() {
+        *i += 1;
+    }
+}
+
+fn is_delimiter_at(text: &str, i: usize) -> bool {
+    is_punctuation(text.as_bytes()[i]) || is_whitespace_at(text, i)
+}
+
+fn is_whitespace_at(text: &str, i: usize) -> bool {
+    is_ecmascript_whitespace(text[i..].chars().next().unwrap())
+}
+
+fn delimiter_len_at(text: &str, i: usize) -> usize {
+    if is_punctuation(text.as_bytes()[i]) {
+        1
+    } else {
+        char_len_at(text, i)
+    }
+}
+
+fn char_len_at(text: &str, i: usize) -> usize {
+    text[i..].chars().next().unwrap().len_utf8()
+}
+
+fn is_punctuation(byte: u8) -> bool {
+    matches!(
+        byte,
+        b'.' | b','
+            | b'!'
+            | b'?'
+            | b';'
+            | b'('
+            | b')'
+            | b'{'
+            | b'}'
+            | b'['
+            | b']'
+            | b'<'
+            | b'>'
+            | b':'
+            | b'/'
+            | b'\\'
+            | b'|'
+            | b'@'
+            | b'#'
+            | b'$'
+            | b'%'
+            | b'^'
+            | b'&'
+            | b'*'
+            | b'+'
+            | b'='
+            | b'`'
+            | b'~'
+            | b'_'
+            | b'-'
+    )
+}
+
+fn is_ecmascript_whitespace(ch: char) -> bool {
+    if ('\u{2000}'..='\u{200A}').contains(&ch) {
+        return true;
+    }
+
+    matches!(
+        ch,
+        '\u{0009}'
+            | '\u{000A}'
+            | '\u{000B}'
+            | '\u{000C}'
+            | '\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+            | '\u{FEFF}'
+    )
 }
 
 #[cfg(test)]
